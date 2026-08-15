@@ -1,26 +1,138 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8f6fc;
+  --foreground: #201541;
+  --kudos-ink: #201541;
+  --kudos-ink-soft: #5f5678;
+  --kudos-purple: #9676ed;
+  --kudos-purple-dark: #7652d2;
+  --kudos-purple-light: #eee8ff;
+  --kudos-lilac: #d8c9ff;
+  --kudos-card: #ffffff;
+  --kudos-sun: #f7c95c;
+  --kudos-coral: #ff8d82;
+  --kudos-mint: #79d5ba;
+  --kudos-sky: #82c7ef;
+  --kudos-danger: #d94f65;
+  --kudos-ring: rgba(150, 118, 237, 0.36);
+  --kudos-shadow-sm: 0 1px 2px rgba(32, 21, 65, 0.05), 0 8px 24px rgba(55, 35, 102, 0.06);
+  --kudos-shadow-md: 0 2px 4px rgba(32, 21, 65, 0.06), 0 18px 48px rgba(55, 35, 102, 0.1);
+  --motion-fast: 160ms;
+  --motion-base: 240ms;
+  --motion-slow: 420ms;
+  --ease-kudos: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-pop: cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-kudos-ink: var(--kudos-ink);
+  --color-kudos-ink-soft: var(--kudos-ink-soft);
+  --color-kudos-purple: var(--kudos-purple);
+  --color-kudos-purple-dark: var(--kudos-purple-dark);
+  --color-kudos-purple-light: var(--kudos-purple-light);
+  --color-kudos-lilac: var(--kudos-lilac);
+  --color-kudos-card: var(--kudos-card);
+  --color-kudos-sun: var(--kudos-sun);
+  --color-kudos-coral: var(--kudos-coral);
+  --color-kudos-mint: var(--kudos-mint);
+  --color-kudos-sky: var(--kudos-sky);
+  --color-kudos-danger: var(--kudos-danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --shadow-kudos-sm: var(--kudos-shadow-sm);
+  --shadow-kudos-md: var(--kudos-shadow-md);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  min-height: 100%;
+  background: var(--background);
 }
 
 body {
-  background: var(--background);
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(216, 201, 255, 0.32), transparent 28rem),
+    radial-gradient(circle at 92% 92%, rgba(130, 199, 239, 0.16), transparent 26rem),
+    var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--kudos-ring);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--kudos-lilac);
+  color: var(--kudos-ink);
+}
+
+@keyframes kudos-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(4deg);
+  }
+}
+
+@keyframes kudos-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes kudos-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.animate-kudos-float {
+  animation: kudos-float 3.6s ease-in-out infinite;
+}
+
+.animate-kudos-pop-in {
+  animation: kudos-pop-in var(--motion-slow) var(--ease-pop) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

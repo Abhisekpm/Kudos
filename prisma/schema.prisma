@@ -1,0 +1,172 @@
+// Kudos — data model
+// See C:\Users\abhis\.claude\plans\moonlit-churning-ritchie.md for design rationale.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Season {
+  id            String   @id @default(cuid())
+  name          String
+  startDate     DateTime
+  endDate       DateTime
+  baseRateCents Int      @default(10)
+
+  weeks Week[]
+}
+
+model Player {
+  id        String  @id @default(cuid())
+  name      String
+  isParent  Boolean
+  sortOrder Int
+
+  habits           Habit[]
+  habitChecks      HabitCheck[]
+  chores           Chore[]
+  nominationsGiven Nomination[]      @relation("NominationFrom")
+  nominationsGot   Nomination[]      @relation("NominationTo")
+  deductions       Deduction[]
+  shieldUses       StreakShieldUse[]
+  weekResults      WeekResult[]
+}
+
+model Week {
+  id         String    @id @default(cuid())
+  seasonId   String
+  weekNumber Int
+  startDate  DateTime
+  endDate    DateTime
+  status     String    @default("OPEN") // OPEN | LOCKED
+  lockedAt   DateTime?
+
+  season      Season            @relation(fields: [seasonId], references: [id])
+  habitsFrom  Habit[]           @relation("HabitValidFrom")
+  habitsTo    Habit[]           @relation("HabitValidTo")
+  habitChecks HabitCheck[]
+  chores      Chore[]
+  nominations Nomination[]
+  deductions  Deduction[]
+  shieldUses  StreakShieldUse[]
+  weekResults WeekResult[]
+
+  @@unique([seasonId, weekNumber])
+}
+
+// Versioned habit slot. Swapping a habit closes the old row (validToWeekId)
+// and opens a new one starting the following week — history stays intact
+// for streak calculations against past weeks.
+model Habit {
+  id               String   @id @default(cuid())
+  playerId         String
+  name             String
+  weeklyTargetDays Int
+  targetBonusStars Int      @default(2)
+  validFromWeekId  String
+  validToWeekId    String?
+  replacesHabitId  String?
+  createdAt        DateTime @default(now())
+
+  player        Player       @relation(fields: [playerId], references: [id])
+  validFromWeek Week         @relation("HabitValidFrom", fields: [validFromWeekId], references: [id])
+  validToWeek   Week?        @relation("HabitValidTo", fields: [validToWeekId], references: [id])
+  replaces      Habit?       @relation("HabitHistory", fields: [replacesHabitId], references: [id])
+  replacedBy    Habit[]      @relation("HabitHistory")
+  checks        HabitCheck[]
+}
+
+model HabitCheck {
+  id       String   @id @default(cuid())
+  habitId  String
+  weekId   String
+  playerId String
+  date     DateTime
+  done     Boolean  @default(true)
+
+  habit  Habit  @relation(fields: [habitId], references: [id])
+  week   Week   @relation(fields: [weekId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@unique([habitId, date])
+}
+
+model Chore {
+  id          String   @id @default(cuid())
+  weekId      String
+  playerId    String
+  tier        String // STANDARD (2⭐) | BIG (5⭐)
+  description String
+  date        DateTime
+  createdAt   DateTime @default(now())
+
+  week   Week   @relation(fields: [weekId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+}
+
+model Nomination {
+  id           String   @id @default(cuid())
+  weekId       String
+  fromPlayerId String
+  toPlayerId   String
+  tier         String // KINDNESS (5⭐) | ABOVE_AND_BEYOND (10⭐)
+  reason       String
+  date         DateTime
+  createdAt    DateTime @default(now())
+
+  week       Week   @relation(fields: [weekId], references: [id])
+  fromPlayer Player @relation("NominationFrom", fields: [fromPlayerId], references: [id])
+  toPlayer   Player @relation("NominationTo", fields: [toPlayerId], references: [id])
+}
+
+model Deduction {
+  id        String   @id @default(cuid())
+  weekId    String
+  playerId  String
+  stars     Int
+  reason    String
+  createdAt DateTime @default(now())
+
+  week   Week   @relation(fields: [weekId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+}
+
+model StreakShieldUse {
+  id        String   @id @default(cuid())
+  playerId  String
+  weekId    String
+  quarter   String // e.g. "2026-Q3"
+  createdAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id])
+  week   Week   @relation(fields: [weekId], references: [id])
+
+  @@unique([weekId, playerId])
+}
+
+// Written once when a week is locked at the huddle. Immutable after —
+// the permanent, banked record for that player/week.
+model WeekResult {
+  id                    String  @id @default(cuid())
+  weekId                String
+  playerId              String
+  habitStars            Int
+  habitTargetBonusStars Int
+  choreStars            Int
+  nominationStars       Int
+  deductionStars        Int
+  streakBonusStars      Int
+  weekComplete          Boolean
+  shieldUsed            Boolean
+  streakLengthAfter     Int
+  totalStars            Int
+
+  week   Week   @relation(fields: [weekId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@unique([weekId, playerId])
+}

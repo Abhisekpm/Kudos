@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc -t markdown \"Kudos Master Rule book.docx\")",
+      "PowerShell(Get-Command pandoc -ErrorAction SilentlyContinue)",
+      "Bash(cd \"C:\\\\Users\\\\abhis\\\\Kudos\" && rmdir kudos-app 2>&1; ls -la mockups)",
+      "Bash(npm install *)",
+      "Bash(npx prisma *)",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
+      "Bash(npx tsx *)",
+      "Bash(node -p \"require\\('./node_modules/iron-session/package.json'\\).version\")",
+      "Bash(node -p \"require\\('./node_modules/next/package.json'\\).version\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\abhis\\\\Kudos\\\\app\\\\gm\\\\login\" \"C:\\\\Users\\\\abhis\\\\Kudos\\\\app\\\\play\\\\login\" \"C:\\\\Users\\\\abhis\\\\Kudos\\\\app\\\\gm\\\\players\\\\[playerId]\" \"C:\\\\Users\\\\abhis\\\\Kudos\\\\app\\\\gm\\\\week\" \"C:\\\\Users\\\\abhis\\\\Kudos\\\\app\\\\play\\\\[playerId]\" \"C:\\\\Users\\\\abhis\\\\Kudos\\\\components\")",
+      "WebSearch"
+    ]
+  }
+}
