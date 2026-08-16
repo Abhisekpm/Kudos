@@ -11,11 +11,11 @@ datasource db {
 }
 
 model Season {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   name          String
   startDate     DateTime
-  endDate       DateTime
-  baseRateCents Int      @default(10)
+  endDate       DateTime?
+  baseRateCents Int       @default(10)
 
   weeks Week[]
 }
@@ -34,6 +34,7 @@ model Player {
   deductions       Deduction[]
   shieldUses       StreakShieldUse[]
   weekResults      WeekResult[]
+  cashOuts         CashOut[]
 }
 
 model Week {
@@ -146,6 +147,19 @@ model StreakShieldUse {
   week   Week   @relation(fields: [weekId], references: [id])
 
   @@unique([weekId, playerId])
+}
+
+// Points remain in immutable WeekResults; cash-outs are a separate ledger so
+// the running balance can be audited without rewriting game history.
+model CashOut {
+  id        String   @id @default(cuid())
+  playerId  String
+  points    Int
+  createdAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@index([playerId, createdAt])
 }
 
 // Written once when a week is locked at the huddle. Immutable after —

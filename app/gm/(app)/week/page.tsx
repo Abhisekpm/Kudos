@@ -1,6 +1,12 @@
 import { format } from "date-fns";
 import { StarCount } from "@/components/KudosUI";
-import { getCurrentWeek, getPlayers, previewPlayerWeekResult } from "@/lib/kudos/data";
+import { prisma } from "@/lib/prisma";
+import {
+  getCurrentWeek,
+  getPlayers,
+  previewPlayerWeekResult,
+  streakShieldBalance,
+} from "@/lib/kudos/data";
 import { lockCurrentWeek } from "../../actions";
 
 export default async function WeekHuddlePage() {
@@ -8,10 +14,17 @@ export default async function WeekHuddlePage() {
   const players = await getPlayers();
 
   const results = await Promise.all(
-    players.map(async (player) => ({
-      player,
-      result: await previewPlayerWeekResult(player.id, week.id),
-    })),
+    players.map(async (player) => {
+      const [result, shieldBalance] = await Promise.all([
+        week.status === "LOCKED"
+          ? prisma.weekResult.findUniqueOrThrow({
+              where: { weekId_playerId: { weekId: week.id, playerId: player.id } },
+            })
+          : previewPlayerWeekResult(player.id, week.id),
+        streakShieldBalance(player.id, week.startDate),
+      ]);
+      return { player, result, shieldBalance };
+    }),
   );
 
   return (
@@ -27,8 +40,9 @@ export default async function WeekHuddlePage() {
         </p>
       </header>
 
-      <div className="flex flex-col gap-4">
-        {results.map(({ player, result }) => (
+      <form action={lockCurrentWeek} className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
+        {results.map(({ player, result, shieldBalance }) => (
           <section key={player.id} className="rounded-3xl bg-kudos-card p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-kudos-ink">{player.name}</h2>
@@ -56,22 +70,42 @@ export default async function WeekHuddlePage() {
                   : "Week incomplete"}{" "}
               · Streak after this week: {result.streakLengthAfter}
             </p>
+            <div className="mt-4 rounded-2xl bg-kudos-purple-light/60 p-3 text-sm text-kudos-ink-soft">
+              <p className="font-bold text-kudos-purple-dark">🛡️ {shieldBalance} streak {shieldBalance === 1 ? "shield" : "shields"} available</p>
+              {week.status === "OPEN" && !result.weekComplete && shieldBalance > 0 ? (
+                <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-xl bg-white/80 px-3 py-3 text-kudos-ink">
+                  <input
+                    type="checkbox"
+                    name="shieldPlayerId"
+                    value={player.id}
+                    className="mt-0.5 h-5 w-5 accent-kudos-purple"
+                  />
+                  <span>
+                    <strong>Use one shield for this week</strong>
+                    <span className="mt-0.5 block text-xs leading-5 text-kudos-ink-soft">
+                      Only check this if {player.name} chooses to protect their streak.
+                    </span>
+                  </span>
+                </label>
+              ) : week.status === "OPEN" && !result.weekComplete ? (
+                <p className="mt-1 text-xs">No shield is available, so an incomplete week will reset the streak.</p>
+              ) : null}
+            </div>
           </section>
         ))}
-      </div>
+        </div>
 
       {week.status === "OPEN" ? (
-        <form action={lockCurrentWeek}>
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-kudos-ink px-4 py-4 text-lg font-semibold text-white"
-          >
-            Lock &amp; bank stars for this week
-          </button>
-        </form>
+        <button
+          type="submit"
+          className="w-full rounded-xl bg-kudos-ink px-4 py-4 text-lg font-semibold text-white"
+        >
+          Lock &amp; bank stars for this week
+        </button>
       ) : (
         <p className="text-center text-sm text-kudos-ink/50">This week is locked and banked.</p>
       )}
+      </form>
     </div>
   );
 }

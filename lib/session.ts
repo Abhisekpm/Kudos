@@ -54,3 +54,11 @@ export async function requireGm(): Promise<void> {
     throw new Error("Not authorized: gamemaster session required");
   }
 }
+
+/** Defense in depth for actions available from the shared family player view. */
+export async function requirePlay(): Promise<void> {
+  const session = await getSession();
+  if (!canAccessPlay(session.role)) {
+    throw new Error("Not authorized: player session required");
+  }
+}

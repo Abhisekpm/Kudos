@@ -1,10 +1,10 @@
 import { differenceInCalendarWeeks } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { calcWeekResult, type PlayerWeekInput, type WeekResultCalc } from "./calc";
-import { DEFAULT_HABIT_TARGET_BONUS, SHIELDS_PER_QUARTER } from "./constants";
-import { quarterLabel, weekBounds } from "./week";
+import { DEFAULT_HABIT_TARGET_BONUS, STREAK_SHIELDS_PER_QUARTER } from "./constants";
+import { weekBounds } from "./week";
 
-export async function getActiveSeason() {
+async function getGameSettings() {
   const season = await prisma.season.findFirst({ orderBy: { startDate: "desc" } });
   if (!season) throw new Error("No season configured — run the seed script first");
   return season;
@@ -16,7 +16,7 @@ export async function getActiveSeason() {
  * so it stays correct no matter what order weeks get touched in.
  */
 export async function getOrCreateWeekFor(date: Date) {
-  const season = await getActiveSeason();
+  const season = await getGameSettings();
   const { start, end } = weekBounds(date);
 
   const existing = await prisma.week.findFirst({
@@ -41,7 +41,7 @@ export async function getOrCreateWeekFor(date: Date) {
 
 /** The week to show/act on right now — clamped to the season's first week if opened early. */
 export async function getCurrentWeek() {
-  const season = await getActiveSeason();
+  const season = await getGameSettings();
   const now = new Date();
   const referenceDate = now < season.startDate ? season.startDate : now;
   return getOrCreateWeekFor(referenceDate);
@@ -79,16 +79,33 @@ async function getPriorStreakLength(playerId: string, beforeWeekStart: Date): Pr
   return lastResult?.streakLengthAfter ?? 0;
 }
 
-async function getShieldAvailable(playerId: string, weekStart: Date): Promise<boolean> {
-  const quarter = quarterLabel(weekStart);
-  const usesThisQuarter = await prisma.streakShieldUse.count({
-    where: { playerId, quarter },
+function calendarQuarterIndex(date: Date): number {
+  return date.getFullYear() * 4 + Math.floor(date.getMonth() / 3);
+}
+
+/** Two shields are added each calendar quarter; unused shields carry forward. */
+export async function streakShieldBalance(playerId: string, asOf: Date = new Date()): Promise<number> {
+  const firstSeason = await prisma.season.findFirst({
+    orderBy: { startDate: "asc" },
+    select: { startDate: true },
   });
-  return usesThisQuarter < SHIELDS_PER_QUARTER;
+  if (!firstSeason || asOf < firstSeason.startDate) return 0;
+
+  const quartersEarned =
+    calendarQuarterIndex(asOf) - calendarQuarterIndex(firstSeason.startDate) + 1;
+  const used = await prisma.streakShieldUse.count({
+    where: { playerId, week: { startDate: { lte: asOf } } },
+  });
+
+  return Math.max(0, quartersEarned * STREAK_SHIELDS_PER_QUARTER - used);
 }
 
 /** Assembles calc.ts input for one player/week straight from the database. */
-export async function buildPlayerWeekInput(playerId: string, weekId: string): Promise<PlayerWeekInput> {
+export async function buildPlayerWeekInput(
+  playerId: string,
+  weekId: string,
+  options: { useShield?: boolean } = {},
+): Promise<PlayerWeekInput> {
   const week = await prisma.week.findUniqueOrThrow({ where: { id: weekId } });
   const habits = await getActiveHabits(playerId, weekId);
 
@@ -106,12 +123,12 @@ export async function buildPlayerWeekInput(playerId: string, weekId: string): Pr
     }),
   );
 
-  const [chores, nominationsReceived, deductions, priorStreakLength, shieldAvailable] = await Promise.all([
+  const [chores, nominationsReceived, deductions, priorStreakLength, shieldBalance] = await Promise.all([
     prisma.chore.findMany({ where: { weekId, playerId }, select: { tier: true } }),
     prisma.nomination.findMany({ where: { weekId, toPlayerId: playerId }, select: { tier: true } }),
     prisma.deduction.findMany({ where: { weekId, playerId }, select: { stars: true } }),
     getPriorStreakLength(playerId, week.startDate),
-    getShieldAvailable(playerId, week.startDate),
+    streakShieldBalance(playerId, week.startDate),
   ]);
 
   return {
@@ -120,7 +137,8 @@ export async function buildPlayerWeekInput(playerId: string, weekId: string): Pr
     nominationsReceived: nominationsReceived as { tier: "KINDNESS" | "ABOVE_AND_BEYOND" }[],
     deductions,
     priorStreakLength,
-    shieldAvailable,
+    shieldAvailable: shieldBalance > 0,
+    useShield: options.useShield ?? false,
   };
 }
 
@@ -155,10 +173,23 @@ export async function nominationsGivenCountThisWeek(playerId: string, weekId: st
 }
 
 /** Sum of totalStars across all locked weeks for a player — the banked lifetime total. */
-export async function lifetimeStars(playerId: string): Promise<number> {
-  const results = await prisma.weekResult.findMany({
-    where: { playerId },
-    select: { totalStars: true },
-  });
-  return results.reduce((sum, r) => sum + r.totalStars, 0);
+export async function playerStarBalance(playerId: string): Promise<{
+  earned: number;
+  cashedOut: number;
+  available: number;
+}> {
+  const [earnedResult, cashOutResult] = await Promise.all([
+    prisma.weekResult.aggregate({
+      where: { playerId },
+      _sum: { totalStars: true },
+    }),
+    prisma.cashOut.aggregate({
+      where: { playerId },
+      _sum: { points: true },
+    }),
+  ]);
+
+  const earned = earnedResult._sum.totalStars ?? 0;
+  const cashedOut = cashOutResult._sum.points ?? 0;
+  return { earned, cashedOut, available: Math.max(0, earned - cashedOut) };
 }

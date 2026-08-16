@@ -1,5 +1,4 @@
 import {
-  CASH_OUT_MIN_STARS,
   STAR_VALUES,
   STREAK_BONUSES,
   type ChoreTier,
@@ -20,6 +19,7 @@ export interface PlayerWeekInput {
   deductions: { stars: number }[];
   priorStreakLength: number;
   shieldAvailable: boolean;
+  useShield: boolean;
 }
 
 export interface WeekResultCalc {
@@ -74,7 +74,7 @@ export function calcWeekResult(input: PlayerWeekInput): WeekResultCalc {
   const weekComplete =
     input.habits.length > 0 && input.habits.every((h) => h.daysChecked >= h.weeklyTargetDays);
 
-  const shieldUsed = !weekComplete && input.shieldAvailable;
+  const shieldUsed = !weekComplete && input.shieldAvailable && input.useShield;
   const effectiveComplete = weekComplete || shieldUsed;
 
   const streakLengthAfter = effectiveComplete ? input.priorStreakLength + 1 : 0;
@@ -100,12 +100,4 @@ export function calcWeekResult(input: PlayerWeekInput): WeekResultCalc {
     streakLengthAfter,
     totalStars,
   };
-}
-
-export function canCashOut(lifetimeStars: number): boolean {
-  return lifetimeStars >= CASH_OUT_MIN_STARS;
-}
-
-export function giftValueCents(lifetimeStars: number, baseRateCents: number): number {
-  return lifetimeStars * baseRateCents;
 }

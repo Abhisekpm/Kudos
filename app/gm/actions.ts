@@ -14,9 +14,7 @@ import {
 } from "@/lib/kudos/data";
 import { calcWeekResult } from "@/lib/kudos/calc";
 import {
-  MAX_ACTIVE_HABITS_PER_PLAYER,
   MAX_NOMINATIONS_GIVEN_PER_WEEK,
-  MIN_ACTIVE_HABITS_PER_PLAYER,
 } from "@/lib/kudos/constants";
 
 async function assertWeekOpen(weekId: string) {
@@ -147,95 +145,107 @@ export async function addDeduction(playerId: string, stars: number, reason: stri
   revalidatePath("/play");
 }
 
-/** Closes the current habit and opens a replacement starting next week, per §3. */
-export async function swapHabit(
-  oldHabitId: string,
-  newName: string,
-  newWeeklyTargetDays: number,
-) {
+/** Saves the player's complete habit table as the plan for next week. */
+export async function saveHabitPlanForm(formData: FormData) {
   await requireGm();
-  assertHabitTargetDays(newWeeklyTargetDays);
 
-  const oldHabit = await prisma.habit.findUniqueOrThrow({ where: { id: oldHabitId } });
-  const nextWeek = await getNextWeek();
+  const playerId = String(formData.get("playerId") ?? "");
+  const names = formData.getAll("name").map((value) => String(value).trim());
+  const targets = formData.getAll("weeklyTargetDays").map(Number);
+  const sourceHabitIds = formData.getAll("sourceHabitId").map(String);
+
+  if (!playerId) throw new Error("Player is required.");
+  if (names.length !== targets.length || names.length !== sourceHabitIds.length) {
+    throw new Error("The habit table could not be read. Please reload and try again.");
+  }
+
+  const rows = names.map((name, index) => {
+    if (!name) throw new Error("Every habit needs a name.");
+    assertHabitTargetDays(targets[index]);
+    return {
+      name,
+      weeklyTargetDays: targets[index],
+      sourceHabitId: sourceHabitIds[index] || null,
+    };
+  });
+
+  const sourceIds = rows.flatMap((row) => (row.sourceHabitId ? [row.sourceHabitId] : []));
+  if (new Set(sourceIds).size !== sourceIds.length) {
+    throw new Error("A current habit can only appear once in the next-week plan.");
+  }
+
+  const [currentWeek, nextWeek] = await Promise.all([getCurrentWeek(), getNextWeek()]);
+  const currentHabits = await getActiveHabits(playerId, currentWeek.id);
+  const currentById = new Map(currentHabits.map((habit) => [habit.id, habit]));
+
+  for (const sourceId of sourceIds) {
+    if (!currentById.has(sourceId)) {
+      throw new Error("One of these habits is no longer active. Please reload and try again.");
+    }
+  }
+
+  await prisma.player.findUniqueOrThrow({ where: { id: playerId }, select: { id: true } });
 
   await prisma.$transaction(async (tx) => {
-    await tx.habit.update({
-      where: { id: oldHabitId },
-      data: { validToWeekId: nextWeek.id },
+    // Rebuild the not-yet-active plan so repeated saves remain predictable.
+    await tx.habit.deleteMany({ where: { playerId, validFromWeekId: nextWeek.id } });
+    await tx.habit.updateMany({
+      where: { playerId, validToWeekId: nextWeek.id },
+      data: { validToWeekId: null },
     });
 
-    const scheduledReplacement = await tx.habit.findFirst({
-      where: { replacesHabitId: oldHabit.id, validFromWeekId: nextWeek.id },
-    });
+    const rowBySourceId = new Map(
+      rows.flatMap((row) => (row.sourceHabitId ? [[row.sourceHabitId, row] as const] : [])),
+    );
 
-    if (scheduledReplacement) {
+    for (const habit of currentHabits) {
+      const planned = rowBySourceId.get(habit.id);
+      if (!planned) {
+        await tx.habit.update({
+          where: { id: habit.id },
+          data: { validToWeekId: nextWeek.id },
+        });
+        continue;
+      }
+
+      if (planned.name === habit.name && planned.weeklyTargetDays === habit.weeklyTargetDays) {
+        continue;
+      }
+
       await tx.habit.update({
-        where: { id: scheduledReplacement.id },
-        data: { name: newName, weeklyTargetDays: newWeeklyTargetDays },
+        where: { id: habit.id },
+        data: { validToWeekId: nextWeek.id },
       });
-    } else {
       await tx.habit.create({
         data: {
-          playerId: oldHabit.playerId,
-          name: newName,
-          weeklyTargetDays: newWeeklyTargetDays,
-          targetBonusStars: oldHabit.targetBonusStars,
+          playerId,
+          name: planned.name,
+          weeklyTargetDays: planned.weeklyTargetDays,
+          targetBonusStars: habit.targetBonusStars,
           validFromWeekId: nextWeek.id,
-          replacesHabitId: oldHabit.id,
+          replacesHabitId: habit.id,
+        },
+      });
+    }
+
+    for (const planned of rows.filter((row) => !row.sourceHabitId)) {
+      await tx.habit.create({
+        data: {
+          playerId,
+          name: planned.name,
+          weeklyTargetDays: planned.weeklyTargetDays,
+          targetBonusStars: 2,
+          validFromWeekId: nextWeek.id,
         },
       });
     }
   });
 
-  revalidatePath(`/gm/players/${oldHabit.playerId}`);
-  revalidatePath("/gm");
-  revalidatePath("/play");
-}
-
-export async function addHabit(playerId: string, name: string, weeklyTargetDays: number) {
-  await requireGm();
-  assertHabitTargetDays(weeklyTargetDays);
-
-  const week = await getCurrentWeek();
-  const activeHabits = await getActiveHabits(playerId, week.id);
-  if (activeHabits.length >= MAX_ACTIVE_HABITS_PER_PLAYER) {
-    throw new Error(`Max ${MAX_ACTIVE_HABITS_PER_PLAYER} active habits per player.`);
-  }
-
-  await prisma.habit.create({
-    data: { playerId, name, weeklyTargetDays, targetBonusStars: 2, validFromWeekId: week.id },
-  });
-
   revalidatePath(`/gm/players/${playerId}`);
   revalidatePath("/gm");
+  revalidatePath("/gm/week");
   revalidatePath("/play");
-}
-
-export async function retireHabit(habitId: string) {
-  await requireGm();
-
-  const habit = await prisma.habit.findUniqueOrThrow({ where: { id: habitId } });
-  const nextWeek = await getNextWeek();
-  const nextWeekHabits = await getActiveHabits(habit.playerId, nextWeek.id);
-
-  if (nextWeekHabits.length <= MIN_ACTIVE_HABITS_PER_PLAYER) {
-    throw new Error(`Each player must keep at least ${MIN_ACTIVE_HABITS_PER_PLAYER} active habits.`);
-  }
-
-  await prisma.$transaction([
-    prisma.habit.deleteMany({
-      where: { replacesHabitId: habit.id, validFromWeekId: nextWeek.id },
-    }),
-    prisma.habit.update({
-      where: { id: habit.id },
-      data: { validToWeekId: nextWeek.id },
-    }),
-  ]);
-
-  revalidatePath(`/gm/players/${habit.playerId}`);
-  revalidatePath("/gm");
-  revalidatePath("/play");
+  revalidatePath(`/play/${playerId}`);
 }
 
 export async function addChoreForm(formData: FormData) {
@@ -263,38 +273,29 @@ export async function addDeductionForm(formData: FormData) {
   await addDeduction(playerId, stars, reason);
 }
 
-export async function addHabitForm(formData: FormData) {
-  const playerId = String(formData.get("playerId"));
-  const name = String(formData.get("name") ?? "").trim();
-  const weeklyTargetDays = Number(formData.get("weeklyTargetDays"));
-  if (!name) throw new Error("Habit needs a name.");
-  await addHabit(playerId, name, weeklyTargetDays);
-}
-
-export async function swapHabitForm(formData: FormData) {
-  const oldHabitId = String(formData.get("oldHabitId"));
-  const name = String(formData.get("name") ?? "").trim();
-  const weeklyTargetDays = Number(formData.get("weeklyTargetDays"));
-  if (!name) throw new Error("Habit needs a name.");
-  await swapHabit(oldHabitId, name, weeklyTargetDays);
-}
-
-export async function retireHabitForm(formData: FormData) {
-  await retireHabit(String(formData.get("habitId")));
-}
-
-export async function lockCurrentWeek() {
+export async function lockCurrentWeek(formData: FormData) {
   await requireGm();
   const week = await getCurrentWeek();
   await assertWeekOpen(week.id);
 
   const players = await getPlayers();
+  const requestedShieldPlayerIds = new Set(formData.getAll("shieldPlayerId").map(String));
+  const playerIds = new Set(players.map((player) => player.id));
+  if ([...requestedShieldPlayerIds].some((playerId) => !playerIds.has(playerId))) {
+    throw new Error("A shield was requested for an unknown player.");
+  }
+
+  const playerResults = await Promise.all(
+    players.map(async (player) => {
+      const input = await buildPlayerWeekInput(player.id, week.id, {
+        useShield: requestedShieldPlayerIds.has(player.id),
+      });
+      return { player, result: calcWeekResult(input) };
+    }),
+  );
 
   await prisma.$transaction(async (tx) => {
-    for (const player of players) {
-      const input = await buildPlayerWeekInput(player.id, week.id);
-      const result = calcWeekResult(input);
-
+    for (const { player, result } of playerResults) {
       await tx.weekResult.create({
         data: {
           weekId: week.id,
@@ -330,4 +331,7 @@ export async function lockCurrentWeek() {
   revalidatePath("/gm");
   revalidatePath("/gm/week");
   revalidatePath("/play");
+  for (const player of players) {
+    revalidatePath(`/play/${player.id}`);
+  }
 }

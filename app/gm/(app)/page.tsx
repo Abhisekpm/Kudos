@@ -3,7 +3,6 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   getActiveHabits,
-  getActiveSeason,
   getCurrentWeek,
   getPlayers,
   previewPlayerWeekResult,
@@ -13,19 +12,7 @@ import { StarCount } from "@/components/KudosUI";
 import { addChoreForm, addDeductionForm, addNominationForm } from "../actions";
 
 export default async function GmDashboard() {
-  const season = await getActiveSeason();
   const now = new Date();
-
-  if (now < season.startDate) {
-    return (
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-2 px-4 py-6 text-center">
-        <h1 className="text-2xl font-bold text-kudos-ink">{season.name} hasn&apos;t started yet</h1>
-        <p className="text-kudos-ink/60">
-          Check-off opens {format(season.startDate, "EEEE, MMM d")}.
-        </p>
-      </div>
-    );
-  }
 
   const week = await getCurrentWeek();
   const players = await getPlayers();

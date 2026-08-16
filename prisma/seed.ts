@@ -5,8 +5,7 @@ import { weekBounds } from "../lib/kudos/week";
 const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
 const prisma = new PrismaClient({ adapter });
 
-const SEASON_START = new Date("2026-08-03T00:00:00");
-const SEASON_END = new Date("2026-11-08T23:59:59");
+const GAME_START = new Date("2026-08-03T00:00:00");
 
 const PLAYERS = [
   { name: "Kashi", isParent: false, sortOrder: 0 },
@@ -41,19 +40,18 @@ const STARTING_HABITS: Record<string, { name: string; weeklyTargetDays: number }
 };
 
 async function main() {
-  const season = await prisma.season.create({
+  const game = await prisma.season.create({
     data: {
-      name: "Season 1",
-      startDate: SEASON_START,
-      endDate: SEASON_END,
+      name: "Ongoing game",
+      startDate: GAME_START,
       baseRateCents: 10,
     },
   });
 
-  const { start, end } = weekBounds(SEASON_START);
+  const { start, end } = weekBounds(GAME_START);
   const week1 = await prisma.week.create({
     data: {
-      seasonId: season.id,
+      seasonId: game.id,
       weekNumber: 1,
       startDate: start,
       endDate: end,
@@ -77,7 +75,7 @@ async function main() {
     }
   }
 
-  console.log(`Seeded Season 1 (${season.id}), Week 1 (${week1.id}), ${PLAYERS.length} players.`);
+  console.log(`Seeded ongoing game (${game.id}), Week 1 (${week1.id}), ${PLAYERS.length} players.`);
 }
 
 main()

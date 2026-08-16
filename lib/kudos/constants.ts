@@ -8,11 +8,8 @@ export const STAR_VALUES = {
 
 export const DEFAULT_HABIT_TARGET_BONUS = 2;
 
-export const MIN_ACTIVE_HABITS_PER_PLAYER = 3;
-export const MAX_ACTIVE_HABITS_PER_PLAYER = 5;
 export const MAX_NOMINATIONS_GIVEN_PER_WEEK = 3;
-export const SHIELDS_PER_QUARTER = 1;
-export const CASH_OUT_MIN_STARS = 400;
+export const STREAK_SHIELDS_PER_QUARTER = 2;
 
 /** Bonus is awarded exactly when a player's consecutive-complete-week streak reaches this length. */
 export const STREAK_BONUSES: { weeks: number; bonus: number }[] = [
@@ -25,7 +22,7 @@ export const STREAK_BONUSES: { weeks: number; bonus: number }[] = [
 ];
 
 /** Cost no stars — unlocked once lifetime stars reach the threshold. */
-export const MID_SEASON_MILESTONES: { stars: number; unlocks: string }[] = [
+export const POINT_MILESTONES: { stars: number; unlocks: string }[] = [
   { stars: 200, unlocks: "Pick the Friday movie" },
   { stars: 300, unlocks: "Pick a restaurant, family goes" },
   { stars: 500, unlocks: "A day out of your choosing" },
